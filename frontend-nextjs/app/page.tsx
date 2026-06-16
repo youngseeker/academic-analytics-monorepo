@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import Chart from 'chart.js/auto';
+import { supabase } from '../src/lib/supabaseClient'; 
 
 // --- EXACT V1 LOGIC RESTORED ---
-
 function getScoreFromGrade(gradeInput: string, systemType: string) {
     const grade = gradeInput.toUpperCase().trim();
     if (systemType === 'ng') {
@@ -89,8 +89,11 @@ interface Course {
 }
 
 export default function Home() {
+  const [isClient, setIsClient] = useState(false);
+  const [appMode, setAppMode] = useState<'welcome' | 'calculator'>('welcome');
+  
   // STATE MANAGEMENT
-  const [studentName, setStudentName] = useState('Adeyemi Daniel Adeniji');
+  const [studentName, setStudentName] = useState(''); 
   const [studentSchool, setStudentSchool] = useState('');
   
   const [programDuration, setProgramDuration] = useState(4);
@@ -106,14 +109,132 @@ export default function Home() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterSem, setFilterSem] = useState('all');
 
-  const [targetGPA, setTargetGPA] = useState('4.65');
+  const [targetGPA, setTargetGPA] = useState(''); 
   const [nextUnits, setNextUnits] = useState('');
   const [targetResult, setTargetResult] = useState('');
 
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
 
-  // SEMESTER DROPDOWN LOGIC
+  // SUPABASE & SYNC STATE
+  const [user, setUser] = useState<any>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
+  const [syncStatus, setSyncStatus] = useState<'Idle' | 'Saving...' | 'Saved ☁️' | 'Sync Error'>('Idle');
+
+  useEffect(() => {
+    setIsClient(true);
+    
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const activeUser = session?.user ?? null;
+      setUser(activeUser);
+      if (activeUser) setAppMode('calculator'); // Skip welcome screen if already logged in
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const activeUser = session?.user ?? null;
+      setUser(activeUser);
+      if (activeUser) setAppMode('calculator');
+    });
+
+    const savedGrades = localStorage.getItem("myGrades");
+    if (savedGrades) setCourses(JSON.parse(savedGrades));
+
+    const savedProfile = localStorage.getItem("studentProfile");
+    if (savedProfile) {
+      const p = JSON.parse(savedProfile);
+      if (p.name) setStudentName(p.name);
+      if (p.school) setStudentSchool(p.school);
+      if (p.duration) setProgramDuration(p.duration);
+      if (p.system) setGradingStandard(p.system);
+      if (p.term) setTermSystem(p.term);
+    }
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // SILENT BACKGROUND AUTO-SYNC ENGINE
+  useEffect(() => {
+    if (!isClient || !user || courses.length === 0) return;
+
+    // Debounce: Wait 2 seconds after the user stops typing/clicking to save to the database
+    const timeoutId = setTimeout(async () => {
+        setSyncStatus('Saving...');
+        try {
+            await supabase.from('profiles').upsert({ id: user.id, full_name: studentName || user.email.split('@')[0] });
+
+            const uniqueSemesters = [...new Set(courses.map(c => c.semester))];
+            for (const semString of uniqueSemesters) {
+                const safeSemesterNumber = parseInt(semString.toString().replace('.', '')) || 1;
+                
+                // 1. Fetch or Create Semester
+                let semId;
+                const { data: existingSem } = await supabase.from('semesters').select('id').eq('profile_id', user.id).eq('semester_number', safeSemesterNumber).single();
+                if (existingSem) {
+                    semId = existingSem.id;
+                } else {
+                    const { data: newSem } = await supabase.from('semesters').insert({ profile_id: user.id, semester_number: safeSemesterNumber, academic_year: new Date().getFullYear().toString() }).select().single();
+                    semId = newSem.id;
+                }
+
+                // 2. Wipe old courses for this term to prevent ghost duplicates, then insert current active state
+                await supabase.from('courses').delete().eq('semester_id', semId);
+
+                const coursesInSem = courses.filter(c => c.semester === semString);
+                if (coursesInSem.length > 0) {
+                    const coursesToInsert = coursesInSem.map(course => {
+                        const activeScore = Number(course.rawScore !== undefined ? course.rawScore : (course as any).score);
+                        const { points } = calculateGradeAndPoints(activeScore, gradingStandard);
+                        return {
+                            semester_id: semId,
+                            course_code: course.code.replace(/\s+/g, '').toUpperCase(),
+                            credit_units: Math.min(Math.max(course.unit, 1), 6), 
+                            grade_point: Math.round(points), 
+                            is_carry_over: false
+                        };
+                    });
+                    await supabase.from('courses').insert(coursesToInsert);
+                }
+            }
+            setSyncStatus('Saved ☁️');
+            setTimeout(() => setSyncStatus('Idle'), 3000);
+        } catch (error: any) {
+            console.error("Background sync error:", error);
+            setSyncStatus('Sync Error');
+        }
+    }, 2000);
+
+    return () => clearTimeout(timeoutId);
+  }, [courses, studentName, studentSchool, programDuration, termSystem, gradingStandard, user, isClient]);
+
+  // LOCAL STORAGE FAST CACHE
+  useEffect(() => {
+    if (!isClient) return;
+    localStorage.setItem("studentProfile", JSON.stringify({ name: studentName, school: studentSchool, duration: programDuration, system: gradingStandard, term: termSystem }));
+  }, [studentName, studentSchool, programDuration, gradingStandard, termSystem, isClient]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    if (courses.length > 0) localStorage.setItem("myGrades", JSON.stringify(courses));
+    else localStorage.removeItem("myGrades");
+  }, [courses, isClient]);
+
+  // AUTH ACTIONS
+  const handleLogin = async () => {
+    if (!authEmail) { setAuthMessage('Please enter a valid email.'); return; }
+    setAuthMessage('Sending magic link...');
+    const { error } = await supabase.auth.signInWithOtp({ email: authEmail, options: { emailRedirectTo: window.location.origin } });
+    if (error) setAuthMessage(error.message);
+    else setAuthMessage('✨ Check your email for the secure login link!');
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setAppMode('welcome');
+    setAuthMessage('Successfully signed out.');
+  };
+
+  // CALCULATOR LOGIC
   const semesterOptions = [];
   for (let year = 1; year <= programDuration; year++) {
     for (let term = 1; term <= termSystem; term++) {
@@ -121,13 +242,13 @@ export default function Home() {
     }
   }
 
-  // DYNAMIC CALCULATION ENGINE
   const maxScale = gradingStandard === 'in' ? 10.0 : gradingStandard === 'ui' ? 7.0 : gradingStandard === 'ng' ? 5.0 : 4.0;
   
   const calculatedCourses = courses.map(c => {
-    const { grade, points } = calculateGradeAndPoints(c.rawScore, gradingStandard);
-    const color = getColorForScore(c.rawScore, gradingStandard);
-    return { ...c, currentGrade: grade, currentPoints: points, color };
+    const activeScore = Number(c.rawScore !== undefined ? c.rawScore : (c as any).score);
+    const { grade, points } = calculateGradeAndPoints(activeScore, gradingStandard);
+    const color = getColorForScore(activeScore, gradingStandard);
+    return { ...c, currentGrade: grade, currentPoints: points, color, rawScore: activeScore };
   });
 
   const filteredCourses = filterSem === 'all' ? calculatedCourses : calculatedCourses.filter(c => c.semester === filterSem);
@@ -143,107 +264,118 @@ export default function Home() {
     semesterGroups[c.semester].qp += (c.currentPoints * c.unit);
   });
 
-  // CONFETTI
   useEffect(() => {
-    if (parseFloat(cgpa) >= (maxScale * 0.9) && courses.length > 0) {
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-    }
+    if (parseFloat(cgpa) >= (maxScale * 0.9) && courses.length > 0) confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
   }, [cgpa, maxScale, courses.length]);
 
-  // CHART.JS RESTORATION
   useEffect(() => {
-    if (chartInstance.current) chartInstance.current.destroy();
-    if (courses.length === 0 || !chartRef.current) return;
+    if (appMode !== 'calculator' || chartInstance.current) chartInstance.current?.destroy();
+    if (courses.length === 0 || !chartRef.current || appMode !== 'calculator') return;
 
     const labels = Object.keys(semesterGroups).sort();
     const dataPoints = labels.map(sem => (semesterGroups[sem].qp / semesterGroups[sem].units).toFixed(2));
 
     chartInstance.current = new Chart(chartRef.current, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'GPA Trend',
-                data: dataPoints,
-                borderColor: '#00b894',
-                backgroundColor: 'rgba(0, 184, 148, 0.2)',
-                borderWidth: 3,
-                tension: 0.4,
-                fill: true,
-                pointBackgroundColor: '#ffffff',
-                pointRadius: 5
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: { beginAtZero: true, max: maxScale, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } },
-                x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } }
-            },
-            plugins: { legend: { labels: { color: 'white' } } }
-        }
+        data: { labels: labels, datasets: [{ label: 'GPA Trend', data: dataPoints, borderColor: '#00b894', backgroundColor: 'rgba(0, 184, 148, 0.2)', borderWidth: 3, tension: 0.4, fill: true, pointBackgroundColor: '#ffffff', pointRadius: 5 }] },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: maxScale, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } }, x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } } }, plugins: { legend: { labels: { color: 'white' } } } }
     });
-  }, [courses, gradingStandard]); // Redraws if courses or scale changes
 
-  // FORM ACTIONS
+    return () => chartInstance.current?.destroy();
+  }, [courses, maxScale, appMode]); 
+
   const handleSaveCourse = () => {
     if (!courseCode || !courseScore || !courseUnit) return;
-
     let finalScore;
     const rawInput = courseScore.trim();
-    
-    // Exact V1 String/Number conversion logic
-    if (!isNaN(Number(rawInput))) {
-        finalScore = Math.round(parseFloat(rawInput));
-    } else {
+    if (!isNaN(Number(rawInput))) { finalScore = Math.round(parseFloat(rawInput)); } 
+    else {
         finalScore = getScoreFromGrade(rawInput, gradingStandard);
-        if (finalScore === -1) {
-            alert(`The grade "${rawInput}" is not valid for the selected grading system.`);
-            return;
-        }
+        if (finalScore === -1) { alert(`The grade "${rawInput}" is not valid.`); return; }
     }
-
     if (finalScore > 100) finalScore = 100;
     if (finalScore < 0) finalScore = 0;
 
     if (editingId) {
-      setCourses(courses.map(c => c.id === editingId ? {
-        ...c, semester, code: courseCode.toUpperCase(), rawScore: finalScore, unit: parseInt(courseUnit)
-      } : c));
+      setCourses(courses.map(c => c.id === editingId ? { ...c, semester, code: courseCode.toUpperCase(), rawScore: finalScore, unit: parseInt(courseUnit) } : c));
       setEditingId(null);
     } else {
-      setCourses([...courses, {
-        id: crypto.randomUUID(), semester, code: courseCode.toUpperCase(), rawScore: finalScore, unit: parseInt(courseUnit)
-      }]);
+      setCourses([...courses, { id: crypto.randomUUID(), semester, code: courseCode.toUpperCase(), rawScore: finalScore, unit: parseInt(courseUnit) }]);
     }
-
     setCourseCode(''); setCourseScore(''); setCourseUnit('');
   };
 
   const startEdit = (course: any) => {
-    setEditingId(course.id);
-    setSemester(course.semester);
-    setCourseCode(course.code);
-    setCourseScore(course.rawScore.toString());
-    setCourseUnit(course.unit.toString());
+    setEditingId(course.id); setSemester(course.semester); setCourseCode(course.code);
+    const activeScore = course.rawScore !== undefined ? course.rawScore : course.score;
+    setCourseScore(activeScore.toString()); setCourseUnit(course.unit.toString());
   };
 
   const calculateTarget = () => {
-    const target = parseFloat(targetGPA);
-    const units = parseFloat(nextUnits);
-    if (!target || !units) {
-      setTargetResult("Please enter both a Goal and Next Units."); return;
-    }
+    const target = parseFloat(targetGPA); const units = parseFloat(nextUnits);
+    if (!target || !units) { setTargetResult("Please enter both a Goal and Next Units."); return; }
     const requiredGPA = ((target * (totalUnits + units)) - totalPoints) / units;
-    
     if (requiredGPA > maxScale) setTargetResult(`⚠️ Impossible! You need ${requiredGPA.toFixed(2)} (Max is ${maxScale}).`);
     else if (requiredGPA < 0) setTargetResult(`🎉 You're already above this target!`);
     else setTargetResult(`🎯 Aim for a ${requiredGPA.toFixed(2)} GPA next semester.`);
   };
 
+  if (!isClient) return null;
+
+  // --- RENDER WELCOME SCREEN ---
+  if (appMode === 'welcome') {
+    return (
+      <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+        <div style={{ background: 'var(--glass-bg)', padding: '50px 40px', borderRadius: '24px', maxWidth: '450px', width: '100%', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <h1 style={{ fontSize: '3rem', margin: '0 0 10px 0' }}>🎓</h1>
+            <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>My Student OS</h2>
+            <p style={{ color: 'var(--secondary-color)', marginBottom: '30px', fontSize: '0.95rem' }}>
+              The unified engine for your academic data. Log in to sync your progress securely to the cloud.
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <input type="email" placeholder="Enter your email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} style={{ padding: '15px', width: '100%' }} />
+              <button onClick={handleLogin} style={{ width: '100%', padding: '15px', fontSize: '1.1rem' }}>Send Magic Link</button>
+            </div>
+            
+            {authMessage && <p style={{ marginTop: '15px', fontSize: '0.85rem', color: authMessage.includes('Error') ? 'var(--danger-color)' : '#00b894' }}>{authMessage}</p>}
+
+            <div style={{ margin: '30px 0', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
+                <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: 'var(--bg-color)', padding: '0 10px', fontSize: '0.8rem', color: '#636e72' }}>OR</span>
+            </div>
+
+            <button onClick={() => setAppMode('calculator')} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', width: '100%', padding: '12px' }}>
+                Continue as Guest (Local Only)
+            </button>
+        </div>
+      </main>
+    );
+  }
+
+  // --- RENDER MAIN CALCULATOR ---
   return (
-    <>
+    <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      
+      {/* THE NEW SUBTLE NAV BAR */}
+      <div style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', background: 'rgba(0,0,0,0.4)', borderRadius: '12px', marginBottom: '25px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ fontWeight: 'bold', letterSpacing: '1px' }}>🎓 Student OS</div>
+          <div style={{ fontSize: '0.85rem' }}>
+              {user ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      <span style={{ color: syncStatus === 'Sync Error' ? 'var(--danger-color)' : 'var(--secondary-color)' }}>
+                          {syncStatus === 'Saving...' ? '↻ Saving...' : syncStatus === 'Saved ☁️' ? '✓ Saved' : user.email}
+                      </span>
+                      <button onClick={handleLogout} style={{ background: 'transparent', padding: 0, border: 'none', color: 'var(--danger-color)' }}>Sign Out</button>
+                  </span>
+              ) : (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '15px', color: '#636e72' }}>
+                      Guest Mode
+                      <button onClick={() => setAppMode('welcome')} style={{ background: 'transparent', padding: 0, border: 'none', color: 'var(--primary-color)' }}>Log In to Sync</button>
+                  </span>
+              )}
+          </div>
+      </div>
+
       <div id="profile-card">
         <div className="profile-image-container">
             <img id="profile-img" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="Profile" />
@@ -347,11 +479,9 @@ export default function Home() {
           </div>
       </div>
 
-      {courses.length > 0 && (
-          <div className="chart-container">
-              <canvas ref={chartRef}></canvas>
-          </div>
-      )}
+      <div className="chart-container" style={{ display: courses.length > 0 ? 'flex' : 'none' }}>
+          <canvas ref={chartRef}></canvas>
+      </div>
 
       <div id="semester-summaries" className="summary-grid">
         {Object.keys(semesterGroups).sort().map(sem => {
@@ -389,6 +519,6 @@ export default function Home() {
       <div className="footer">
           <p>© 2026 Adeyemi Adeniji. All Rights Reserved.</p>
       </div>
-    </>
+    </main>
   );
 }
