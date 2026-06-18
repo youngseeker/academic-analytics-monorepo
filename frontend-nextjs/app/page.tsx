@@ -183,7 +183,7 @@ export default function Home() {
                 semester_id: semId,
                 course_code: course.code.replace(/\s+/g, '').toUpperCase(),
                 credit_units: Math.min(Math.max(course.unit, 1), 6),
-                grade_point: Math.round(points),
+                grade_point: (points),
                 is_carry_over: false
               };
             });
