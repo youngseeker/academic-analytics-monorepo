@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import Chart from 'chart.js/auto';
-import { supabase } from '../src/lib/supabaseClient';
+import { useSync } from '../src/hooks/useSync';
+import { useUser } from '../src/context/UserContext';
 
 function getScoreFromGrade(gradeInput: string, systemType: string) {
   const grade = gradeInput.toUpperCase().trim();
@@ -115,25 +116,17 @@ export default function Home() {
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
 
-  const [user, setUser] = useState<any>(null);
+  // --- NEW ISOLATED ARCHITECTURE ---
+  // The Context handles auth, the Hook handles the database sync.
+  const { user, loading, login, logout } = useUser();
+  const syncStatus = useSync(user, courses, studentName, gradingStandard);
+
   const [authEmail, setAuthEmail] = useState('');
   const [authMessage, setAuthMessage] = useState('');
-  const [syncStatus, setSyncStatus] = useState<'Idle' | 'Saving...' | 'Saved ☁️' | 'Sync Error'>('Idle');
 
+  // 1. Initial Load & Hydration
   useEffect(() => {
     setIsClient(true);
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const activeUser = session?.user ?? null;
-      setUser(activeUser);
-      if (activeUser) setAppMode('calculator');
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const activeUser = session?.user ?? null;
-      setUser(activeUser);
-      if (activeUser) setAppMode('calculator');
-    });
 
     const savedGrades = localStorage.getItem("myGrades");
     if (savedGrades) setCourses(JSON.parse(savedGrades));
@@ -147,60 +140,16 @@ export default function Home() {
       if (p.system) setGradingStandard(p.system);
       if (p.term) setTermSystem(p.term);
     }
-
-    return () => subscription.unsubscribe();
   }, []);
 
+  // 2. Auth Routing
   useEffect(() => {
-    if (!isClient || !user || courses.length === 0) return;
+    if (!loading && user) {
+      setAppMode('calculator');
+    }
+  }, [user, loading]);
 
-    const timeoutId = setTimeout(async () => {
-      setSyncStatus('Saving...');
-      try {
-        await supabase.from('profiles').upsert({ id: user.id, full_name: studentName || user.email.split('@')[0] });
-
-        const uniqueSemesters = [...new Set(courses.map(c => c.semester))];
-        for (const semString of uniqueSemesters) {
-          const safeSemesterNumber = parseInt(semString.toString().replace('.', '')) || 1;
-
-          let semId;
-          const { data: existingSem } = await supabase.from('semesters').select('id').eq('profile_id', user.id).eq('semester_number', safeSemesterNumber).single();
-          if (existingSem) {
-            semId = existingSem.id;
-          } else {
-            const { data: newSem } = await supabase.from('semesters').insert({ profile_id: user.id, semester_number: safeSemesterNumber, academic_year: new Date().getFullYear().toString() }).select().single();
-            semId = newSem.id;
-          }
-
-          await supabase.from('courses').delete().eq('semester_id', semId);
-
-          const coursesInSem = courses.filter(c => c.semester === semString);
-          if (coursesInSem.length > 0) {
-            const coursesToInsert = coursesInSem.map(course => {
-              const activeScore = Number(course.rawScore !== undefined ? course.rawScore : (course as any).score);
-              const { points } = calculateGradeAndPoints(activeScore, gradingStandard);
-              return {
-                semester_id: semId,
-                course_code: course.code.replace(/\s+/g, '').toUpperCase(),
-                credit_units: Math.min(Math.max(course.unit, 1), 6),
-                grade_point: (points),
-                is_carry_over: false
-              };
-            });
-            await supabase.from('courses').insert(coursesToInsert);
-          }
-        }
-        setSyncStatus('Saved ☁️');
-        setTimeout(() => setSyncStatus('Idle'), 3000);
-      } catch (error: any) {
-        console.error("Background sync error:", error);
-        setSyncStatus('Sync Error');
-      }
-    }, 2000);
-
-    return () => clearTimeout(timeoutId);
-  }, [courses, studentName, studentSchool, programDuration, termSystem, gradingStandard, user, isClient]);
-
+  // 3. Local Storage Cache
   useEffect(() => {
     if (!isClient) return;
     localStorage.setItem("studentProfile", JSON.stringify({ name: studentName, school: studentSchool, duration: programDuration, system: gradingStandard, term: termSystem }));
@@ -212,6 +161,7 @@ export default function Home() {
     else localStorage.removeItem("myGrades");
   }, [courses, isClient]);
 
+  // 4. External DSA Engine Hook
   const testPythonEngine = async () => {
     try {
       const response = await fetch("http://localhost:8000/build-schedule", {
@@ -238,20 +188,21 @@ export default function Home() {
     }
   };
 
+  // 5. Auth Handlers
   const handleLogin = async () => {
     if (!authEmail) { setAuthMessage('Please enter a valid email.'); return; }
     setAuthMessage('Sending magic link...');
-    const { error } = await supabase.auth.signInWithOtp({ email: authEmail, options: { emailRedirectTo: window.location.origin } });
-    if (error) setAuthMessage(error.message);
-    else setAuthMessage('✨ Check your email for the secure login link!');
+    const { error, message } = await login(authEmail);
+    setAuthMessage(message);
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await logout();
     setAppMode('welcome');
     setAuthMessage('Successfully signed out.');
   };
 
+  // --- CALCULATOR LOGIC ---
   const semesterOptions = [];
   for (let year = 1; year <= programDuration; year++) {
     for (let term = 1; term <= termSystem; term++) {
@@ -339,6 +290,7 @@ export default function Home() {
 
   if (!isClient) return null;
 
+  // --- RENDER WELCOME SCREEN ---
   if (appMode === 'welcome') {
     return (
       <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -368,6 +320,7 @@ export default function Home() {
     );
   }
 
+  // --- RENDER MAIN CALCULATOR ---
   return (
     <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
