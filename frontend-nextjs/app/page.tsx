@@ -1,12 +1,22 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import confetti from 'canvas-confetti';
-import Chart from 'chart.js/auto';
-import { useSync } from '../src/hooks/useSync';
+import { useState, useEffect } from 'react';
 import { useUser } from '../src/context/UserContext';
+import { useSync } from '../src/hooks/useSync';
+import { Navbar } from '../src/components/Navbar';
+import { WelcomeScreen } from '../src/components/WelcomeScreen';
+import { MigrationBanner } from '../src/components/MigrationBanner';
+import { GpaSummaryCard } from '../src/components/GpaSummaryCard';
+import { CourseForm } from '../src/components/CourseForm';
+import { CourseTable, CalculatedCourse } from '../src/components/CourseTable';
+import { TargetCalculator } from '../src/components/TargetCalculator';
+import { PathPlanner } from '../src/components/PathPlanner';
+import { ScenarioWorkbench } from '../src/components/ScenarioWorkbench';
+import { DegreeMap, DegreeCourseNode } from '../src/components/DegreeMap';
+import { OnboardingWizard } from '../src/components/OnboardingWizard';
+import { ComplianceModal } from '../src/components/ComplianceModal';
 
-function getScoreFromGrade(gradeInput: string, systemType: string) {
+function getScoreFromGrade(gradeInput: string, systemType: string): number {
   const grade = gradeInput.toUpperCase().trim();
   if (systemType === 'ng') {
     if (grade === 'A') return 70; if (grade === 'B') return 60; if (grade === 'C') return 50;
@@ -70,17 +80,13 @@ function calculateGradeAndPoints(score: number, systemType: string) {
 function getColorForScore(score: number, systemType: string) {
   if (systemType === 'ng' || systemType === 'poly' || systemType === 'ui') {
     if (score >= 60) return '#00b894'; if (score >= 40) return '#fdcb6e'; return '#ff7675';
-  } else if (systemType === 'us') {
-    if (score >= 80) return '#00b894'; if (score >= 60) return '#fdcb6e'; return '#ff7675';
-  } else if (systemType === 'uk') {
-    if (score >= 60) return '#00b894'; if (score >= 40) return '#fdcb6e'; return '#ff7675';
-  } else if (systemType === 'in') {
+  } else if (systemType === 'us' || systemType === 'uk' || systemType === 'in') {
     if (score >= 60) return '#00b894'; if (score >= 40) return '#fdcb6e'; return '#ff7675';
   }
   return '#ffffff';
 }
 
-interface Course {
+interface RawCourse {
   id: string;
   semester: string;
   code: string;
@@ -91,10 +97,13 @@ interface Course {
 export default function Home() {
   const [isClient, setIsClient] = useState(false);
   const [appMode, setAppMode] = useState<'welcome' | 'calculator'>('welcome');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'simulator' | 'degree_map'>('dashboard');
+
+  const [showWizard, setShowWizard] = useState(false);
+  const [showCompliance, setShowCompliance] = useState(false);
 
   const [studentName, setStudentName] = useState('');
   const [studentSchool, setStudentSchool] = useState('');
-
   const [programDuration, setProgramDuration] = useState(4);
   const [termSystem, setTermSystem] = useState(2);
   const [gradingStandard, setGradingStandard] = useState('ng');
@@ -103,31 +112,15 @@ export default function Home() {
   const [courseCode, setCourseCode] = useState('');
   const [courseScore, setCourseScore] = useState('');
   const [courseUnit, setCourseUnit] = useState('');
-
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<RawCourse[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterSem, setFilterSem] = useState('all');
 
-  const [targetGPA, setTargetGPA] = useState('');
-  const [nextUnits, setNextUnits] = useState('');
-  const [targetResult, setTargetResult] = useState('');
-  const [optimalPath, setOptimalPath] = useState<string[][]>([]);
-
-  const chartRef = useRef<HTMLCanvasElement>(null);
-  const chartInstance = useRef<Chart | null>(null);
-
-  // --- NEW ISOLATED ARCHITECTURE ---
-  // The Context handles auth, the Hook handles the database sync.
   const { user, loading, login, logout } = useUser();
   const syncStatus = useSync(user, courses, studentName, gradingStandard);
 
-  const [authEmail, setAuthEmail] = useState('');
-  const [authMessage, setAuthMessage] = useState('');
-
-  // 1. Initial Load & Hydration
   useEffect(() => {
     setIsClient(true);
-
     const savedGrades = localStorage.getItem("myGrades");
     if (savedGrades) setCourses(JSON.parse(savedGrades));
 
@@ -139,17 +132,17 @@ export default function Home() {
       if (p.duration) setProgramDuration(p.duration);
       if (p.system) setGradingStandard(p.system);
       if (p.term) setTermSystem(p.term);
+    } else {
+      setShowWizard(true);
     }
   }, []);
 
-  // 2. Auth Routing
   useEffect(() => {
     if (!loading && user) {
       setAppMode('calculator');
     }
   }, [user, loading]);
 
-  // 3. Local Storage Cache
   useEffect(() => {
     if (!isClient) return;
     localStorage.setItem("studentProfile", JSON.stringify({ name: studentName, school: studentSchool, duration: programDuration, system: gradingStandard, term: termSystem }));
@@ -161,48 +154,16 @@ export default function Home() {
     else localStorage.removeItem("myGrades");
   }, [courses, isClient]);
 
-  // 4. External DSA Engine Hook
-  const testPythonEngine = async () => {
-    try {
-      const response = await fetch("http://localhost:8000/build-schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          courses: [
-            { code: "MTH101", prerequisites: [] },
-            { code: "CSC101", prerequisites: [] },
-            { code: "CSC201", prerequisites: ["CSC101", "MTH101"] },
-            { code: "CSC301", prerequisites: ["CSC201"] },
-            { code: "MTH201", prerequisites: ["MTH101"] },
-            { code: "AI401", prerequisites: ["CSC301", "MTH201"] }
-          ]
-        })
-      });
-
-      const data = await response.json();
-      setOptimalPath(data.optimal_path);
-
-    } catch (error) {
-      console.error("Failed to reach Python engine:", error);
-      alert("Failed to connect. Is the Python server running on port 8000?");
-    }
+  const handleWizardComplete = (profileData: any) => {
+    setStudentName(profileData.name);
+    setStudentSchool(profileData.school);
+    setGradingStandard(profileData.system);
+    setProgramDuration(profileData.duration);
+    setTermSystem(profileData.term);
+    setShowWizard(false);
+    setAppMode('calculator');
   };
 
-  // 5. Auth Handlers
-  const handleLogin = async () => {
-    if (!authEmail) { setAuthMessage('Please enter a valid email.'); return; }
-    setAuthMessage('Sending magic link...');
-    const { error, message } = await login(authEmail);
-    setAuthMessage(message);
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    setAppMode('welcome');
-    setAuthMessage('Successfully signed out.');
-  };
-
-  // --- CALCULATOR LOGIC ---
   const semesterOptions = [];
   for (let year = 1; year <= programDuration; year++) {
     for (let term = 1; term <= termSystem; term++) {
@@ -212,7 +173,7 @@ export default function Home() {
 
   const maxScale = gradingStandard === 'in' ? 10.0 : gradingStandard === 'ui' ? 7.0 : gradingStandard === 'ng' ? 5.0 : 4.0;
 
-  const calculatedCourses = courses.map(c => {
+  const calculatedCourses: CalculatedCourse[] = courses.map(c => {
     const activeScore = Number(c.rawScore !== undefined ? c.rawScore : (c as any).score);
     const { grade, points } = calculateGradeAndPoints(activeScore, gradingStandard);
     const color = getColorForScore(activeScore, gradingStandard);
@@ -232,25 +193,7 @@ export default function Home() {
     semesterGroups[c.semester].qp += (c.currentPoints * c.unit);
   });
 
-  useEffect(() => {
-    if (parseFloat(cgpa) >= (maxScale * 0.9) && courses.length > 0) confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-  }, [cgpa, maxScale, courses.length]);
-
-  useEffect(() => {
-    if (appMode !== 'calculator' || chartInstance.current) chartInstance.current?.destroy();
-    if (courses.length === 0 || !chartRef.current || appMode !== 'calculator') return;
-
-    const labels = Object.keys(semesterGroups).sort();
-    const dataPoints = labels.map(sem => (semesterGroups[sem].qp / semesterGroups[sem].units).toFixed(2));
-
-    chartInstance.current = new Chart(chartRef.current, {
-      type: 'line',
-      data: { labels: labels, datasets: [{ label: 'GPA Trend', data: dataPoints, borderColor: '#00b894', backgroundColor: 'rgba(0, 184, 148, 0.2)', borderWidth: 3, tension: 0.4, fill: true, pointBackgroundColor: '#ffffff', pointRadius: 5 }] },
-      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: maxScale, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } }, x: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: 'white' } } }, plugins: { legend: { labels: { color: 'white' } } } }
-    });
-
-    return () => chartInstance.current?.destroy();
-  }, [courses, maxScale, appMode]);
+  const completedCodesSet = new Set(calculatedCourses.map(c => c.code.toUpperCase()));
 
   const handleSaveCourse = () => {
     if (!courseCode || !courseScore || !courseUnit) return;
@@ -273,244 +216,174 @@ export default function Home() {
     setCourseCode(''); setCourseScore(''); setCourseUnit('');
   };
 
-  const startEdit = (course: any) => {
-    setEditingId(course.id); setSemester(course.semester); setCourseCode(course.code);
-    const activeScore = course.rawScore !== undefined ? course.rawScore : course.score;
-    setCourseScore(activeScore.toString()); setCourseUnit(course.unit.toString());
+  const startEdit = (course: CalculatedCourse) => {
+    setEditingId(course.id);
+    setSemester(course.semester);
+    setCourseCode(course.code);
+    setCourseScore(course.rawScore.toString());
+    setCourseUnit(course.unit.toString());
   };
 
-  const calculateTarget = () => {
-    const target = parseFloat(targetGPA); const units = parseFloat(nextUnits);
-    if (!target || !units) { setTargetResult("Please enter both a Goal and Next Units."); return; }
-    const requiredGPA = ((target * (totalUnits + units)) - totalPoints) / units;
-    if (requiredGPA > maxScale) setTargetResult(`⚠️ Impossible! You need ${requiredGPA.toFixed(2)} (Max is ${maxScale}).`);
-    else if (requiredGPA < 0) setTargetResult(`🎉 You're already above this target!`);
-    else setTargetResult(`🎯 Aim for a ${requiredGPA.toFixed(2)} GPA next semester.`);
+  const deleteCourse = (id: string) => {
+    if (confirm('Delete this course record?')) {
+      setCourses(courses.filter(c => c.id !== id));
+    }
   };
 
   if (!isClient) return null;
 
-  // --- RENDER WELCOME SCREEN ---
-  if (appMode === 'welcome') {
-    return (
-      <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <div style={{ background: 'var(--glass-bg)', padding: '50px 40px', borderRadius: '24px', maxWidth: '450px', width: '100%', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
-          <h1 style={{ fontSize: '3rem', margin: '0 0 10px 0' }}>🎓</h1>
-          <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>My Student OS</h2>
-          <p style={{ color: 'var(--secondary-color)', marginBottom: '30px', fontSize: '0.95rem' }}>
-            The unified engine for your academic data. Log in to sync your progress securely to the cloud.
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <input type="email" placeholder="Enter your email address" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} style={{ padding: '15px', width: '100%' }} />
-            <button onClick={handleLogin} style={{ width: '100%', padding: '15px', fontSize: '1.1rem' }}>Send Magic Link</button>
-          </div>
-
-          {authMessage && <p style={{ marginTop: '15px', fontSize: '0.85rem', color: authMessage.includes('Error') ? 'var(--danger-color)' : '#00b894' }}>{authMessage}</p>}
-
-          <div style={{ margin: '30px 0', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
-            <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: 'var(--bg-color)', padding: '0 10px', fontSize: '0.8rem', color: '#636e72' }}>OR</span>
-          </div>
-
-          <button onClick={() => setAppMode('calculator')} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', width: '100%', padding: '12px' }}>
-            Continue as Guest (Local Only)
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  // --- RENDER MAIN CALCULATOR ---
   return (
-    <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+    <main style={{ minHeight: '100vh', padding: '24px 20px', maxWidth: '1200px', margin: '0 auto' }}>
+      {showWizard && <OnboardingWizard onComplete={handleWizardComplete} />}
+      <ComplianceModal isOpen={showCompliance} onClose={() => setShowCompliance(false)} user={user} />
 
-      <div style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px 20px', background: 'rgba(0,0,0,0.4)', borderRadius: '12px', marginBottom: '25px', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <div style={{ fontWeight: 'bold', letterSpacing: '1px' }}>🎓 Student OS</div>
-        <div style={{ fontSize: '0.85rem' }}>
-          {user ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <span style={{ color: syncStatus === 'Sync Error' ? 'var(--danger-color)' : 'var(--secondary-color)' }}>
-                {syncStatus === 'Saving...' ? '↻ Saving...' : syncStatus === 'Saved ☁️' ? '✓ Saved' : user.email}
-              </span>
-              <button onClick={handleLogout} style={{ background: 'transparent', padding: 0, border: 'none', color: 'var(--danger-color)' }}>Sign Out</button>
-            </span>
-          ) : (
-            <span style={{ display: 'flex', alignItems: 'center', gap: '15px', color: '#636e72' }}>
-              Guest Mode
-              <button onClick={() => setAppMode('welcome')} style={{ background: 'transparent', padding: 0, border: 'none', color: 'var(--primary-color)' }}>Log In to Sync</button>
-            </span>
+      {appMode === 'welcome' ? (
+        <WelcomeScreen
+          onStartGuest={() => setAppMode('calculator')}
+          onLogin={login}
+        />
+      ) : (
+        <>
+          <Navbar
+            studentName={studentName}
+            studentSchool={studentSchool}
+            user={user}
+            syncStatus={syncStatus}
+            onLogout={logout}
+            onLoginClick={() => setAppMode('welcome')}
+            onPrivacyClick={() => setShowCompliance(true)}
+          />
+
+          <MigrationBanner user={user} />
+
+          {/* Primary Tab Navigation */}
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            marginBottom: '24px',
+            background: 'var(--glass-bg, rgba(15, 23, 42, 0.6))',
+            padding: '6px',
+            borderRadius: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.08)'
+          }}>
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              style={{
+                flex: 1,
+                padding: '12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: activeTab === 'dashboard' ? '#3b82f6' : 'transparent',
+                color: activeTab === 'dashboard' ? '#fff' : '#94a3b8',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              📊 Academic Dashboard
+            </button>
+
+            <button
+              onClick={() => setActiveTab('simulator')}
+              style={{
+                flex: 1,
+                padding: '12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: activeTab === 'simulator' ? '#8b5cf6' : 'transparent',
+                color: activeTab === 'simulator' ? '#fff' : '#94a3b8',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              🔬 Scenario Workbench
+            </button>
+
+            <button
+              onClick={() => setActiveTab('degree_map')}
+              style={{
+                flex: 1,
+                padding: '12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: activeTab === 'degree_map' ? '#10b981' : 'transparent',
+                color: activeTab === 'degree_map' ? '#fff' : '#94a3b8',
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              🗺️ Visual Degree Map
+            </button>
+          </div>
+
+          {/* TAB 1: ACADEMIC DASHBOARD */}
+          {activeTab === 'dashboard' && (
+            <>
+              <GpaSummaryCard
+                cgpa={cgpa}
+                totalUnits={totalUnits}
+                totalCourses={calculatedCourses.length}
+                maxScale={maxScale}
+                semesterGroups={semesterGroups}
+              />
+
+              <CourseForm
+                semester={semester}
+                courseCode={courseCode}
+                courseScore={courseScore}
+                courseUnit={courseUnit}
+                editingId={editingId}
+                semesterOptions={semesterOptions}
+                onSemesterChange={setSemester}
+                onCodeChange={setCourseCode}
+                onScoreChange={setCourseScore}
+                onUnitChange={setCourseUnit}
+                onSubmit={handleSaveCourse}
+                onCancelEdit={() => setEditingId(null)}
+              />
+
+              <CourseTable
+                courses={filteredCourses}
+                filterSem={filterSem}
+                semesterOptions={semesterOptions}
+                onFilterChange={setFilterSem}
+                onEdit={startEdit}
+                onDelete={deleteCourse}
+              />
+
+              <TargetCalculator
+                totalUnits={totalUnits}
+                totalPoints={totalPoints}
+                maxScale={maxScale}
+              />
+
+              <PathPlanner />
+            </>
           )}
-        </div>
-      </div>
 
-      <div id="profile-card">
-        <div className="profile-image-container">
-          <img id="profile-img" src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="Profile" />
-        </div>
-        <div className="profile-details">
-          <input type="text" placeholder="Enter Name" className="transparent-input" value={studentName} onChange={(e) => setStudentName(e.target.value)} />
-          <input type="text" placeholder="University / Program" className="transparent-input small" value={studentSchool} onChange={(e) => setStudentSchool(e.target.value)} />
+          {/* TAB 2: SCENARIO WORKBENCH */}
+          {activeTab === 'simulator' && (
+            <ScenarioWorkbench
+              courses={calculatedCourses}
+              maxScale={maxScale}
+              gradingStandard={gradingStandard}
+            />
+          )}
 
-          <div className="settings-row">
-            <select value={programDuration} onChange={(e) => setProgramDuration(Number(e.target.value))}>
-              <option value="2">Diploma (2 Years)</option><option value="3">HND / Degree (3 Years)</option>
-              <option value="4">Degree (4 Years)</option><option value="5">Engineering/Law (5 Years)</option>
-              <option value="6">Medicine (6 Years)</option>
-            </select>
-            <div className="system-select-container">
-              <label>Terms:</label>
-              <select value={termSystem} onChange={(e) => setTermSystem(Number(e.target.value))}>
-                <option value="2">Semester (2)</option><option value="3">Trimester (3)</option>
-              </select>
-            </div>
-            <div className="system-select-container">
-              <label>Scale:</label>
-              <select value={gradingStandard} onChange={(e) => setGradingStandard(e.target.value)}>
-                <optgroup label="🇳🇬 Nigeria">
-                  <option value="ng">Standard (5.0)</option><option value="poly">Polytechnic (4.0)</option><option value="ui">7.0 Scale (Special/PG)</option>
-                </optgroup>
-                <optgroup label="🌍 Global">
-                  <option value="uk">🇬🇧 UK (Percentage)</option><option value="us">🇺🇸 USA (4.0)</option><option value="in">🇮🇳 India (10.0)</option>
-                </optgroup>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <br />
-      <h1>My Student OS</h1>
-      <div style={{ textAlign: "center", marginBottom: "20px" }}>
-        <a href="https://www.youtube.com/watch?v=IumhoUINbzU" target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-          <button className="demo-btn">▶️ Watch How it Works</button>
-        </a>
-      </div>
-      <br />
-
-      <div id="grade-calculator">
-        <h3>{editingId ? '📝 Edit Course' : 'Add a Course'}</h3>
-        <div className="input-row">
-          <select value={semester} onChange={(e) => setSemester(e.target.value)}>
-            {semesterOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-          </select>
-          <input type="text" placeholder="Course Code (e.g. CIT215)" value={courseCode} onChange={(e) => setCourseCode(e.target.value)} />
-        </div>
-        <div className="input-row">
-          <input type="text" placeholder="Score (e.g. 70) or Grade (e.g. A)" value={courseScore} onChange={(e) => setCourseScore(e.target.value)} />
-          <input type="number" min="0" step="1" placeholder="Units" value={courseUnit} onChange={(e) => setCourseUnit(e.target.value)} />
-          <button onClick={handleSaveCourse}>{editingId ? 'Update' : 'Add Course'}</button>
-        </div>
-      </div>
-      <br />
-
-      <div className="filter-area">
-        <label>Filter View: </label>
-        <select value={filterSem} onChange={(e) => setFilterSem(e.target.value)}>
-          <option value="all">Show All Terms</option>
-          {semesterOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-        </select>
-      </div>
-      <br />
-
-      <h2>Course Registry</h2>
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr><th>Sem</th><th>Code</th><th>Unit</th><th>Score</th><th>Grd</th><th>Pts</th><th>QP</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            {filteredCourses.length === 0 ? (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#b2bec3' }}>📭 No courses added yet</td></tr>
-            ) : (
-              filteredCourses.map(c => (
-                <tr key={c.id}>
-                  <td>{c.semester}</td><td>{c.code}</td><td>{c.unit}</td><td>{c.rawScore}</td>
-                  <td style={{ color: c.color, fontWeight: 'bold' }}>{c.currentGrade}</td>
-                  <td>{c.currentPoints}</td><td>{(c.currentPoints * c.unit).toFixed(2)}</td>
-                  <td>
-                    <button className="delete-btn" style={{ marginRight: '5px', borderColor: '#6c5ce7', color: '#6c5ce7' }} onClick={() => startEdit(c)}>✎</button>
-                    <button className="delete-btn" onClick={() => setCourses(courses.filter(item => item.id !== c.id))}>X</button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div id="result-area" className={parseFloat(cgpa) >= (maxScale * 0.7) ? 'status-green' : parseFloat(cgpa) >= (maxScale * 0.5) ? 'status-orange' : 'status-red'}>
-        <h3>Cumulative GPA: <span id="gpaScore" className={parseFloat(cgpa) >= (maxScale * 0.7) ? 'status-green' : parseFloat(cgpa) >= (maxScale * 0.5) ? 'status-orange' : 'status-red'}>{cgpa}</span> / {maxScale.toFixed(2)}</h3>
-        <div className="stats-row">
-          <div className="stat-badge">📚 Total Courses: <span>{courses.length}</span></div>
-          <div className="stat-badge">⚡ Total Units: <span>{totalUnits}</span></div>
-        </div>
-      </div>
-
-      <div className="chart-container" style={{ display: courses.length > 0 ? 'flex' : 'none' }}>
-        <canvas ref={chartRef}></canvas>
-      </div>
-
-      <div id="semester-summaries" className="summary-grid">
-        {Object.keys(semesterGroups).sort().map(sem => {
-          const semGPA = (semesterGroups[sem].qp / semesterGroups[sem].units).toFixed(2);
-          const isGood = parseFloat(semGPA) >= (maxScale * 0.7);
-          return (
-            <div key={sem} className="summary-card">
-              <div className="summary-sem">Year {sem}</div>
-              <div className={`summary-gpa ${isGood ? 'status-green' : 'status-orange'}`}>{semGPA}</div>
-            </div>
-          )
-        })}
-      </div>
-
-      {optimalPath.length > 0 && (
-        <div id="dsa-roadmap" style={{ background: 'var(--glass-bg)', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '800px', marginBottom: '30px', border: '1px solid rgba(0, 184, 148, 0.3)' }}>
-          <h3 style={{ color: '#00b894', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', marginBottom: '20px' }}>
-            🗺️ Optimal Graduation Path
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {optimalPath.map((semesterCourses, index) => (
-              <div key={index} style={{ background: 'rgba(0,0,0,0.4)', padding: '15px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <div style={{ background: '#00b894', color: '#000', fontWeight: 'bold', padding: '5px 12px', borderRadius: '4px', fontSize: '0.9rem' }}>
-                  Semester {index + 1}
-                </div>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  {semesterCourses.map(code => (
-                    <span key={code} style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '4px 10px', borderRadius: '4px', fontSize: '0.9rem' }}>
-                      {code}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+          {/* TAB 3: VISUAL DEGREE MAP */}
+          {activeTab === 'degree_map' && (
+            <DegreeMap
+              courses={[]}
+              completedCodes={completedCodesSet}
+            />
+          )}
+        </>
       )}
-
-      <div className="action-bar">
-        <button onClick={() => window.print()} className="action-btn">🖨️ Save PDF</button>
-        <button onClick={() => { if (confirm("⚠️ Wipe ALL data?")) setCourses([]) }} className="action-btn delete-mode">🗑️ Reset</button>
-        <button onClick={testPythonEngine} className="action-btn" style={{ background: '#00b894', color: '#000' }}>🧠 Test DSA Engine</button>
-        <a href="https://www.buymeacoffee.com/adeyemiadeniji" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-          <button className="action-btn coffee-btn">☕ Buy me a Coffee</button>
-        </a>
-      </div>
-      <br />
-
-      <div id="target-calculator">
-        <h3>🎯 Target GPA Manager</h3>
-        <p className="target-subtitle">Current CGPA: <span id="targetCurrentCGPA">{cgpa}</span></p>
-        <div className="target-inputs">
-          <input type="number" min="0" step="0.1" placeholder="Goal CGPA" value={targetGPA} onChange={(e) => setTargetGPA(e.target.value)} />
-          <input type="number" min="0" step="1" placeholder="Units Next Sem" value={nextUnits} onChange={(e) => setNextUnits(e.target.value)} />
-          <button onClick={calculateTarget} className="target-btn">Check Required GPA</button>
-        </div>
-        <p id="targetResult" style={{ color: targetResult.includes('Impossible') ? '#ff7675' : targetResult.includes('already') ? '#00b894' : 'white' }}>{targetResult}</p>
-      </div>
-
-      <div className="footer">
-        <p>© 2026 Adeyemi Adeniji. All Rights Reserved.</p>
-      </div>
     </main>
   );
 }

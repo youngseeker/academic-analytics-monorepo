@@ -10,57 +10,29 @@ export function useSync(user: any, courses: any[], studentName: string, gradingS
         const timeoutId = setTimeout(async () => {
             setSyncStatus('Saving...');
             try {
-                // 1. Save Profile
-                await supabase.from('profiles').upsert({
-                    id: user.id,
-                    full_name: studentName || user.email.split('@')[0]
-                });
+                // Single Atomic Payload Sync via Supabase RPC
+                const payload = {
+                    profile: {
+                        name: studentName || user.email.split('@')[0],
+                        system: gradingStandard || '5.0_ng'
+                    },
+                    courses: courses.map(c => ({
+                        id: c.id || Date.now(),
+                        semester: c.semester,
+                        code: c.code,
+                        score: c.score || c.currentPoints || 0,
+                        unit: c.unit || 3
+                    }))
+                };
 
-                // 2. Process Courses Semester by Semester
-                const uniqueSemesters = [...new Set(courses.map(c => c.semester))];
+                const { error: rpcError } = await supabase.rpc('migrate_v1_payload', { payload });
+                if (rpcError) throw rpcError;
 
-                for (const semString of uniqueSemesters) {
-                    const safeSemesterNumber = parseInt(semString.toString().replace('.', '')) || 1;
-
-                    // Get or create semester ID
-                    let semId;
-                    const { data: existingSem } = await supabase.from('semesters')
-                        .select('id').eq('profile_id', user.id).eq('semester_number', safeSemesterNumber).single();
-
-                    if (existingSem) {
-                        semId = existingSem.id;
-                    } else {
-                        const { data: newSem } = await supabase.from('semesters')
-                            .insert({ profile_id: user.id, semester_number: safeSemesterNumber, academic_year: new Date().getFullYear().toString() })
-                            .select().single();
-                        semId = newSem.id;
-                    }
-
-                    // Safely clear old cache and insert fresh state
-                    const { error: deleteError } = await supabase.from('courses').delete().eq('semester_id', semId);
-                    if (deleteError) throw deleteError;
-
-                    const coursesInSem = courses.filter(c => c.semester === semString);
-                    if (coursesInSem.length > 0) {
-                        const coursesToInsert = coursesInSem.map(course => {
-                            return {
-                                semester_id: semId,
-                                course_code: course.code.replace(/\s+/g, '').toUpperCase(),
-                                credit_units: Math.min(Math.max(course.unit, 1), 6),
-                                grade_point: course.currentPoints || 0,
-                                is_carry_over: false
-                            };
-                        });
-
-                        const { error: insertError } = await supabase.from('courses').insert(coursesToInsert);
-                        if (insertError) throw insertError;
-                    }
-                }
                 setSyncStatus('Saved ☁️');
                 setTimeout(() => setSyncStatus('Idle'), 3000);
 
             } catch (error: any) {
-                console.error("Background sync error:", error);
+                console.error("Background atomic sync error:", error);
                 setSyncStatus('Sync Error');
             }
         }, 2000);
