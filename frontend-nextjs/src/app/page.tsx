@@ -1,20 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser } from '../src/context/UserContext';
-import { useSync } from '../src/hooks/useSync';
-import { Navbar } from '../src/components/Navbar';
-import { WelcomeScreen } from '../src/components/WelcomeScreen';
-import { MigrationBanner } from '../src/components/MigrationBanner';
-import { GpaSummaryCard } from '../src/components/GpaSummaryCard';
-import { CourseForm } from '../src/components/CourseForm';
-import { CourseTable, CalculatedCourse } from '../src/components/CourseTable';
-import { TargetCalculator } from '../src/components/TargetCalculator';
-import { PathPlanner } from '../src/components/PathPlanner';
-import { ScenarioWorkbench } from '../src/components/ScenarioWorkbench';
-import { DegreeMap, DegreeCourseNode } from '../src/components/DegreeMap';
-import { OnboardingWizard } from '../src/components/OnboardingWizard';
-import { ComplianceModal } from '../src/components/ComplianceModal';
+import { useUser } from '../context/UserContext';
+import { useSync } from '../hooks/useSync';
+import { Navbar } from '../components/Navbar';
+import { WelcomeScreen } from '../components/WelcomeScreen';
+import { MigrationBanner } from '../components/MigrationBanner';
+import { GpaSummaryCard } from '../components/GpaSummaryCard';
+import { CourseForm } from '../components/CourseForm';
+import { CourseTable, CalculatedCourse } from '../components/CourseTable';
+import { TargetCalculator } from '../components/TargetCalculator';
+import { PathPlanner } from '../components/PathPlanner';
+import { ScenarioWorkbench } from '../components/ScenarioWorkbench';
+import { DegreeMap, DegreeCourseNode } from '../components/DegreeMap';
+import { OnboardingWizard } from '../components/OnboardingWizard';
+import { ComplianceModal } from '../components/ComplianceModal';
 
 function getScoreFromGrade(gradeInput: string, systemType: string): number {
   const grade = gradeInput.toUpperCase().trim();
