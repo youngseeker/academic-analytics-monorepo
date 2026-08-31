@@ -35,12 +35,12 @@ export function GpaSummaryCard({
                 datasets: [{
                     label: 'GPA Trend',
                     data: dataPoints,
-                    borderColor: '#00b894',
-                    backgroundColor: 'rgba(0, 184, 148, 0.15)',
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
                     borderWidth: 3,
                     tension: 0.4,
                     fill: true,
-                    pointBackgroundColor: '#ffffff',
+                    pointBackgroundColor: '#10b981',
                     pointRadius: 5
                 }]
             },
@@ -51,16 +51,16 @@ export function GpaSummaryCard({
                     y: {
                         beginAtZero: true,
                         max: maxScale,
-                        grid: { color: 'rgba(255,255,255,0.08)' },
-                        ticks: { color: '#94a3b8' }
+                        grid: { color: 'rgba(148, 163, 184, 0.15)' },
+                        ticks: { color: 'var(--text-muted)' }
                     },
                     x: {
-                        grid: { color: 'rgba(255,255,255,0.08)' },
-                        ticks: { color: '#94a3b8' }
+                        grid: { color: 'rgba(148, 163, 184, 0.15)' },
+                        ticks: { color: 'var(--text-muted)' }
                     }
                 },
                 plugins: {
-                    legend: { labels: { color: '#f8fafc' } }
+                    legend: { labels: { color: 'var(--text-main)' } }
                 }
             }
         });
@@ -76,26 +76,24 @@ export function GpaSummaryCard({
             marginBottom: '24px'
         }}>
             {/* Stat Box */}
-            <div style={{
-                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-                padding: '24px',
-                borderRadius: '16px',
-                border: '1px solid rgba(59, 130, 246, 0.2)',
+            <div className="glass-card" style={{
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between'
+                justifyContent: 'space-between',
+                borderLeft: '4px solid var(--accent-blue)'
             }}>
                 <div>
-                    <span style={{ fontSize: '0.85rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}>
                         Cumulative GPA (CGPA)
                     </span>
                     <div style={{
                         fontSize: '3.5rem',
                         fontWeight: 900,
-                        color: parseFloat(cgpa) >= (maxScale * 0.7) ? '#4ade80' : parseFloat(cgpa) >= (maxScale * 0.5) ? '#fbbf24' : '#f87171',
-                        margin: '8px 0'
+                        letterSpacing: '-0.03em',
+                        color: parseFloat(cgpa) >= (maxScale * 0.7) ? 'var(--accent-emerald)' : parseFloat(cgpa) >= (maxScale * 0.5) ? 'var(--accent-amber)' : 'var(--accent-rose)',
+                        margin: '6px 0'
                     }}>
-                        {cgpa} <span style={{ fontSize: '1.2rem', color: '#64748b' }}>/ {maxScale.toFixed(2)}</span>
+                        {cgpa} <span style={{ fontSize: '1.2rem', color: 'var(--text-subtle)', fontWeight: 600 }}>/ {maxScale.toFixed(2)}</span>
                     </div>
                 </div>
 
@@ -104,34 +102,28 @@ export function GpaSummaryCard({
                     gridTemplateColumns: '1fr 1fr',
                     gap: '12px',
                     paddingTop: '16px',
-                    borderTop: '1px solid rgba(255,255,255,0.08)'
+                    borderTop: '1px solid var(--card-border)'
                 }}>
                     <div>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>TOTAL UNITS</span>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f8fafc' }}>{totalUnits}</div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase' }}>TOTAL UNITS</span>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>{totalUnits}</div>
                     </div>
                     <div>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>TOTAL COURSES</span>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f8fafc' }}>{totalCourses}</div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 700, textTransform: 'uppercase' }}>TOTAL COURSES</span>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)' }}>{totalCourses}</div>
                     </div>
                 </div>
             </div>
 
             {/* Chart Box */}
-            <div style={{
-                background: 'var(--glass-bg, rgba(15, 23, 42, 0.7))',
-                padding: '20px',
-                borderRadius: '16px',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                height: '240px'
-            }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', color: '#f8fafc' }}>📈 GPA Performance Trend</h4>
+            <div className="glass-card" style={{ height: '240px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.95rem', color: 'var(--text-main)', fontWeight: 700 }}>📈 GPA Performance Trend</h4>
                 {totalCourses === 0 ? (
-                    <div style={{ height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                    <div style={{ height: '160px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)', fontSize: '0.85rem' }}>
                         Add courses across semesters to render trend line.
                     </div>
                 ) : (
-                    <div style={{ height: '180px' }}>
+                    <div style={{ height: '160px' }}>
                         <canvas ref={chartRef} />
                     </div>
                 )}

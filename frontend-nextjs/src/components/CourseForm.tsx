@@ -42,14 +42,8 @@ export function CourseForm({
     };
 
     return (
-        <form onSubmit={handleSubmit} style={{
-            background: 'var(--glass-bg, rgba(15, 23, 42, 0.7))',
-            padding: '24px',
-            borderRadius: '16px',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            marginBottom: '24px'
-        }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
+        <form onSubmit={handleSubmit} className="glass-card" style={{ marginBottom: '24px' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)' }}>
                 {editingId ? '✏️ Edit Course Record' : '➕ Add Course Record'}
             </h3>
 
@@ -60,21 +54,12 @@ export function CourseForm({
                 marginBottom: '16px'
             }}>
                 <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 700 }}>
                         Semester / Term
                     </label>
                     <select
                         value={semester}
                         onChange={(e) => onSemesterChange(e.target.value)}
-                        style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            background: '#0f172a',
-                            color: '#fff',
-                            fontSize: '0.9rem'
-                        }}
                     >
                         {semesterOptions.map(opt => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -83,7 +68,7 @@ export function CourseForm({
                 </div>
 
                 <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 700 }}>
                         Course Code
                     </label>
                     <input
@@ -91,22 +76,12 @@ export function CourseForm({
                         placeholder="e.g. CIT216"
                         value={courseCode}
                         onChange={(e) => onCodeChange(e.target.value)}
-                        style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            background: '#0f172a',
-                            color: '#fff',
-                            fontSize: '0.9rem',
-                            textTransform: 'uppercase',
-                            boxSizing: 'border-box'
-                        }}
+                        style={{ textTransform: 'uppercase' }}
                     />
                 </div>
 
                 <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 700 }}>
                         Score (0-100 or Grade)
                     </label>
                     <input
@@ -114,21 +89,11 @@ export function CourseForm({
                         placeholder="e.g. 75 or A"
                         value={courseScore}
                         onChange={(e) => onScoreChange(e.target.value)}
-                        style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            background: '#0f172a',
-                            color: '#fff',
-                            fontSize: '0.9rem',
-                            boxSizing: 'border-box'
-                        }}
                     />
                 </div>
 
                 <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '6px' }}>
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 700 }}>
                         Credit Units
                     </label>
                     <input
@@ -138,16 +103,6 @@ export function CourseForm({
                         max="6"
                         value={courseUnit}
                         onChange={(e) => onUnitChange(e.target.value)}
-                        style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(255,255,255,0.15)',
-                            background: '#0f172a',
-                            color: '#fff',
-                            fontSize: '0.9rem',
-                            boxSizing: 'border-box'
-                        }}
                     />
                 </div>
             </div>
@@ -157,15 +112,7 @@ export function CourseForm({
                     <button
                         type="button"
                         onClick={onCancelEdit}
-                        style={{
-                            padding: '10px 18px',
-                            borderRadius: '8px',
-                            border: '1px solid rgba(255,255,255,0.2)',
-                            background: 'transparent',
-                            color: '#94a3b8',
-                            cursor: 'pointer',
-                            fontWeight: 600
-                        }}
+                        className="btn-secondary"
                     >
                         Cancel
                     </button>
@@ -173,15 +120,10 @@ export function CourseForm({
 
                 <button
                     type="submit"
+                    className="btn-primary"
                     style={{
-                        padding: '10px 24px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                        color: '#fff',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                        background: 'linear-gradient(135deg, var(--accent-emerald) 0%, #059669 100%)',
+                        boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
                     }}
                 >
                     {editingId ? 'Save Changes' : 'Add Course'}

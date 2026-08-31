@@ -78,12 +78,9 @@ function calculateGradeAndPoints(score: number, systemType: string) {
 }
 
 function getColorForScore(score: number, systemType: string) {
-  if (systemType === 'ng' || systemType === 'poly' || systemType === 'ui') {
-    if (score >= 60) return '#00b894'; if (score >= 40) return '#fdcb6e'; return '#ff7675';
-  } else if (systemType === 'us' || systemType === 'uk' || systemType === 'in') {
-    if (score >= 60) return '#00b894'; if (score >= 40) return '#fdcb6e'; return '#ff7675';
-  }
-  return '#ffffff';
+  if (score >= 60) return '#10b981';
+  if (score >= 40) return '#f59e0b';
+  return '#f43f5e';
 }
 
 interface RawCourse {
@@ -98,6 +95,7 @@ export default function Home() {
   const [isClient, setIsClient] = useState(false);
   const [appMode, setAppMode] = useState<'welcome' | 'calculator'>('welcome');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'simulator' | 'degree_map'>('dashboard');
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   const [showWizard, setShowWizard] = useState(false);
   const [showCompliance, setShowCompliance] = useState(false);
@@ -121,17 +119,28 @@ export default function Home() {
 
   useEffect(() => {
     setIsClient(true);
+    const savedTheme = (localStorage.getItem("theme") as 'dark' | 'light') || 'dark';
+    setTheme(savedTheme);
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
     const savedGrades = localStorage.getItem("myGrades");
-    if (savedGrades) setCourses(JSON.parse(savedGrades));
+    if (savedGrades) {
+      try {
+        const parsed = JSON.parse(savedGrades);
+        if (Array.isArray(parsed) && parsed.length > 0) setCourses(parsed);
+      } catch (e) {}
+    }
 
     const savedProfile = localStorage.getItem("studentProfile");
     if (savedProfile) {
-      const p = JSON.parse(savedProfile);
-      if (p.name) setStudentName(p.name);
-      if (p.school) setStudentSchool(p.school);
-      if (p.duration) setProgramDuration(p.duration);
-      if (p.system) setGradingStandard(p.system);
-      if (p.term) setTermSystem(p.term);
+      try {
+        const p = JSON.parse(savedProfile);
+        if (p.name) setStudentName(p.name);
+        if (p.school) setStudentSchool(p.school);
+        if (p.duration) setProgramDuration(p.duration);
+        if (p.system) setGradingStandard(p.system);
+        if (p.term) setTermSystem(p.term);
+      } catch (e) {}
     } else {
       setShowWizard(true);
     }
@@ -151,8 +160,14 @@ export default function Home() {
   useEffect(() => {
     if (!isClient) return;
     if (courses.length > 0) localStorage.setItem("myGrades", JSON.stringify(courses));
-    else localStorage.removeItem("myGrades");
   }, [courses, isClient]);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    localStorage.setItem("theme", nextTheme);
+    document.documentElement.setAttribute('data-theme', nextTheme);
+  };
 
   const handleWizardComplete = (profileData: any) => {
     setStudentName(profileData.name);
@@ -233,7 +248,7 @@ export default function Home() {
   if (!isClient) return null;
 
   return (
-    <main style={{ minHeight: '100vh', padding: '24px 20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <main style={{ minHeight: '100vh', padding: '24px 20px', maxWidth: '1240px', margin: '0 auto' }}>
       {showWizard && <OnboardingWizard onComplete={handleWizardComplete} />}
       <ComplianceModal isOpen={showCompliance} onClose={() => setShowCompliance(false)} user={user} />
 
@@ -249,6 +264,8 @@ export default function Home() {
             studentSchool={studentSchool}
             user={user}
             syncStatus={syncStatus}
+            theme={theme}
+            onToggleTheme={toggleTheme}
             onLogout={logout}
             onLoginClick={() => setAppMode('welcome')}
             onPrivacyClick={() => setShowCompliance(true)}
@@ -259,26 +276,27 @@ export default function Home() {
           {/* Primary Tab Navigation */}
           <div style={{
             display: 'flex',
-            gap: '12px',
+            gap: '10px',
             marginBottom: '24px',
-            background: 'var(--glass-bg, rgba(15, 23, 42, 0.6))',
+            background: 'var(--card-bg)',
+            backdropFilter: 'blur(12px)',
             padding: '6px',
-            borderRadius: '12px',
-            border: '1px solid rgba(255, 255, 255, 0.08)'
+            borderRadius: '16px',
+            border: '1px solid var(--card-border)'
           }}>
             <button
               onClick={() => setActiveTab('dashboard')}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '12px 16px',
+                borderRadius: '12px',
                 border: 'none',
-                background: activeTab === 'dashboard' ? '#3b82f6' : 'transparent',
-                color: activeTab === 'dashboard' ? '#fff' : '#94a3b8',
+                background: activeTab === 'dashboard' ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'transparent',
+                color: activeTab === 'dashboard' ? '#ffffff' : 'var(--text-muted)',
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontSize: '0.95rem',
-                transition: 'all 0.2s ease'
+                boxShadow: activeTab === 'dashboard' ? '0 4px 12px rgba(37, 99, 235, 0.3)' : 'none'
               }}
             >
               📊 Academic Dashboard
@@ -288,15 +306,15 @@ export default function Home() {
               onClick={() => setActiveTab('simulator')}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '12px 16px',
+                borderRadius: '12px',
                 border: 'none',
-                background: activeTab === 'simulator' ? '#8b5cf6' : 'transparent',
-                color: activeTab === 'simulator' ? '#fff' : '#94a3b8',
+                background: activeTab === 'simulator' ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' : 'transparent',
+                color: activeTab === 'simulator' ? '#ffffff' : 'var(--text-muted)',
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontSize: '0.95rem',
-                transition: 'all 0.2s ease'
+                boxShadow: activeTab === 'simulator' ? '0 4px 12px rgba(139, 92, 246, 0.3)' : 'none'
               }}
             >
               🔬 Scenario Workbench
@@ -306,15 +324,15 @@ export default function Home() {
               onClick={() => setActiveTab('degree_map')}
               style={{
                 flex: 1,
-                padding: '12px',
-                borderRadius: '8px',
+                padding: '12px 16px',
+                borderRadius: '12px',
                 border: 'none',
-                background: activeTab === 'degree_map' ? '#10b981' : 'transparent',
-                color: activeTab === 'degree_map' ? '#fff' : '#94a3b8',
+                background: activeTab === 'degree_map' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent',
+                color: activeTab === 'degree_map' ? '#ffffff' : 'var(--text-muted)',
                 fontWeight: 700,
                 cursor: 'pointer',
                 fontSize: '0.95rem',
-                transition: 'all 0.2s ease'
+                boxShadow: activeTab === 'degree_map' ? '0 4px 12px rgba(16, 185, 129, 0.3)' : 'none'
               }}
             >
               🗺️ Visual Degree Map
@@ -323,7 +341,7 @@ export default function Home() {
 
           {/* TAB 1: ACADEMIC DASHBOARD */}
           {activeTab === 'dashboard' && (
-            <>
+            <div className="animate-fade-in">
               <GpaSummaryCard
                 cgpa={cgpa}
                 totalUnits={totalUnits}
@@ -363,24 +381,28 @@ export default function Home() {
               />
 
               <PathPlanner />
-            </>
+            </div>
           )}
 
           {/* TAB 2: SCENARIO WORKBENCH */}
           {activeTab === 'simulator' && (
-            <ScenarioWorkbench
-              courses={calculatedCourses}
-              maxScale={maxScale}
-              gradingStandard={gradingStandard}
-            />
+            <div className="animate-fade-in">
+              <ScenarioWorkbench
+                courses={calculatedCourses}
+                maxScale={maxScale}
+                gradingStandard={gradingStandard}
+              />
+            </div>
           )}
 
           {/* TAB 3: VISUAL DEGREE MAP */}
           {activeTab === 'degree_map' && (
-            <DegreeMap
-              courses={[]}
-              completedCodes={completedCodesSet}
-            />
+            <div className="animate-fade-in">
+              <DegreeMap
+                courses={[]}
+                completedCodes={completedCodesSet}
+              />
+            </div>
           )}
         </>
       )}
