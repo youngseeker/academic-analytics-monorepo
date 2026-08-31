@@ -12,12 +12,14 @@ interface CourseFormProps {
     courseCode: string;
     courseScore: string;
     courseUnit: string;
+    coursePrereqs?: string;
     editingId: string | null;
     semesterOptions: SemesterOption[];
     onSemesterChange: (val: string) => void;
     onCodeChange: (val: string) => void;
     onScoreChange: (val: string) => void;
     onUnitChange: (val: string) => void;
+    onPrereqsChange?: (val: string) => void;
     onSubmit: () => void;
     onCancelEdit: () => void;
 }
@@ -27,12 +29,14 @@ export function CourseForm({
     courseCode,
     courseScore,
     courseUnit,
+    coursePrereqs = '',
     editingId,
     semesterOptions,
     onSemesterChange,
     onCodeChange,
     onScoreChange,
     onUnitChange,
+    onPrereqsChange,
     onSubmit,
     onCancelEdit
 }: CourseFormProps) {
@@ -105,6 +109,21 @@ export function CourseForm({
                         onChange={(e) => onUnitChange(e.target.value)}
                     />
                 </div>
+
+                {onPrereqsChange && (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 700 }}>
+                            Prerequisite Course Codes (Optional, comma-separated e.g. CSC101, MTH101)
+                        </label>
+                        <input
+                            type="text"
+                            placeholder="e.g. CSC101, MTH101"
+                            value={coursePrereqs}
+                            onChange={(e) => onPrereqsChange(e.target.value)}
+                            style={{ textTransform: 'uppercase' }}
+                        />
+                    </div>
+                )}
             </div>
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>

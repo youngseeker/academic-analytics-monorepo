@@ -89,6 +89,7 @@ interface RawCourse {
   code: string;
   rawScore: number;
   unit: number;
+  prerequisites?: string[];
 }
 
 export default function Home() {
@@ -110,12 +111,17 @@ export default function Home() {
   const [courseCode, setCourseCode] = useState('');
   const [courseScore, setCourseScore] = useState('');
   const [courseUnit, setCourseUnit] = useState('');
+  const [coursePrereqs, setCoursePrereqs] = useState('');
   const [courses, setCourses] = useState<RawCourse[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterSem, setFilterSem] = useState('all');
 
   const { user, loading, login, logout } = useUser();
-  const syncStatus = useSync(user, courses, studentName, gradingStandard);
+  const syncStatus = useSync(user, courses, studentName, gradingStandard, (cloudCourses) => {
+    if (cloudCourses && cloudCourses.length > 0) {
+      setCourses(cloudCourses);
+    }
+  });
 
   useEffect(() => {
     setIsClient(true);
@@ -210,6 +216,13 @@ export default function Home() {
 
   const completedCodesSet = new Set(calculatedCourses.map(c => c.code.toUpperCase()));
 
+  const degreeNodes: DegreeCourseNode[] = courses.map(c => ({
+    code: c.code.toUpperCase(),
+    units: c.unit,
+    term: c.semester,
+    prerequisites: c.prerequisites || []
+  }));
+
   const handleSaveCourse = () => {
     if (!courseCode || !courseScore || !courseUnit) return;
     let finalScore;
@@ -222,13 +235,31 @@ export default function Home() {
     if (finalScore > 100) finalScore = 100;
     if (finalScore < 0) finalScore = 0;
 
+    const parsedPrereqs = coursePrereqs
+      ? coursePrereqs.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)
+      : [];
+
     if (editingId) {
-      setCourses(courses.map(c => c.id === editingId ? { ...c, semester, code: courseCode.toUpperCase(), rawScore: finalScore, unit: parseInt(courseUnit) } : c));
+      setCourses(courses.map(c => c.id === editingId ? {
+        ...c,
+        semester,
+        code: courseCode.toUpperCase(),
+        rawScore: finalScore,
+        unit: parseInt(courseUnit),
+        prerequisites: parsedPrereqs
+      } : c));
       setEditingId(null);
     } else {
-      setCourses([...courses, { id: crypto.randomUUID(), semester, code: courseCode.toUpperCase(), rawScore: finalScore, unit: parseInt(courseUnit) }]);
+      setCourses([...courses, {
+        id: crypto.randomUUID(),
+        semester,
+        code: courseCode.toUpperCase(),
+        rawScore: finalScore,
+        unit: parseInt(courseUnit),
+        prerequisites: parsedPrereqs
+      }]);
     }
-    setCourseCode(''); setCourseScore(''); setCourseUnit('');
+    setCourseCode(''); setCourseScore(''); setCourseUnit(''); setCoursePrereqs('');
   };
 
   const startEdit = (course: CalculatedCourse) => {
@@ -237,6 +268,8 @@ export default function Home() {
     setCourseCode(course.code);
     setCourseScore(course.rawScore.toString());
     setCourseUnit(course.unit.toString());
+    const match = courses.find(c => c.id === course.id);
+    setCoursePrereqs(match?.prerequisites ? match.prerequisites.join(', ') : '');
   };
 
   const deleteCourse = (id: string) => {
@@ -293,7 +326,7 @@ export default function Home() {
                 border: 'none',
                 background: activeTab === 'dashboard' ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'transparent',
                 color: activeTab === 'dashboard' ? '#ffffff' : 'var(--text-muted)',
-                fontWeight: 700,
+                fontWeight: 800,
                 cursor: 'pointer',
                 fontSize: '0.95rem',
                 boxShadow: activeTab === 'dashboard' ? '0 4px 12px rgba(37, 99, 235, 0.3)' : 'none'
@@ -311,7 +344,7 @@ export default function Home() {
                 border: 'none',
                 background: activeTab === 'simulator' ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' : 'transparent',
                 color: activeTab === 'simulator' ? '#ffffff' : 'var(--text-muted)',
-                fontWeight: 700,
+                fontWeight: 800,
                 cursor: 'pointer',
                 fontSize: '0.95rem',
                 boxShadow: activeTab === 'simulator' ? '0 4px 12px rgba(139, 92, 246, 0.3)' : 'none'
@@ -329,7 +362,7 @@ export default function Home() {
                 border: 'none',
                 background: activeTab === 'degree_map' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent',
                 color: activeTab === 'degree_map' ? '#ffffff' : 'var(--text-muted)',
-                fontWeight: 700,
+                fontWeight: 800,
                 cursor: 'pointer',
                 fontSize: '0.95rem',
                 boxShadow: activeTab === 'degree_map' ? '0 4px 12px rgba(16, 185, 129, 0.3)' : 'none'
@@ -355,14 +388,16 @@ export default function Home() {
                 courseCode={courseCode}
                 courseScore={courseScore}
                 courseUnit={courseUnit}
+                coursePrereqs={coursePrereqs}
                 editingId={editingId}
                 semesterOptions={semesterOptions}
                 onSemesterChange={setSemester}
                 onCodeChange={setCourseCode}
                 onScoreChange={setCourseScore}
                 onUnitChange={setCourseUnit}
+                onPrereqsChange={setCoursePrereqs}
                 onSubmit={handleSaveCourse}
-                onCancelEdit={() => setEditingId(null)}
+                onCancelEdit={() => { setEditingId(null); setCoursePrereqs(''); }}
               />
 
               <CourseTable
@@ -399,7 +434,7 @@ export default function Home() {
           {activeTab === 'degree_map' && (
             <div className="animate-fade-in">
               <DegreeMap
-                courses={[]}
+                courses={degreeNodes}
                 completedCodes={completedCodesSet}
               />
             </div>
