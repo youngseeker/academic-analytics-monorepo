@@ -26,7 +26,7 @@ export function GpaSummaryCard({
         if (totalCourses === 0 || !chartRef.current) return;
 
         const labels = Object.keys(semesterGroups).sort();
-        const dataPoints = labels.map(sem => (semesterGroups[sem].qp / semesterGroups[sem].units).toFixed(2));
+        const dataPoints = labels.map(sem => parseFloat((semesterGroups[sem].qp / semesterGroups[sem].units).toFixed(2)));
 
         chartInstance.current = new Chart(chartRef.current, {
             type: 'line',
